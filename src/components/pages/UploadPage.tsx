@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Progress } from '../ui/progress';
 import { Alert, AlertDescription } from '../ui/alert';
 import { AnalysisResult, AnalysisProgress } from '../../types/analysis';
+import { uploadVideo, analyzeVideo } from '../../services/supabase';
 import { toast } from 'sonner';
 
 interface UploadPageProps {
@@ -40,13 +41,11 @@ export function UploadPage({ onAnalysisComplete }: UploadPageProps) {
   };
 
   const handleFileSelect = (file: File) => {
-    // Validate file type
     if (!file.type.startsWith('video/')) {
       toast.error('يرجى اختيار ملف فيديو صالح');
       return;
     }
 
-    // Validate file size (max 100MB)
     if (file.size > 100 * 1024 * 1024) {
       toast.error('حجم الملف كبير جداً. الحد الأقصى 100 ميجابايت');
       return;
@@ -63,50 +62,32 @@ export function UploadPage({ onAnalysisComplete }: UploadPageProps) {
     }
   };
 
-  const simulateAnalysis = async (): Promise<AnalysisResult> => {
-    const stages = [
-      { stage: 'uploading' as const, progress: 20, message: 'جاري رفع الفيديو...' },
-      { stage: 'processing' as const, progress: 40, message: 'معالجة الفيديو...' },
-      { stage: 'analyzing' as const, progress: 80, message: 'تحليل الحيوانات المنوية...' },
-      { stage: 'complete' as const, progress: 100, message: 'اكتمل التحليل!' }
-    ];
-
-    for (const stage of stages) {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setProgress(stage);
-    }
-
-    // Simulate realistic results
-    const result: AnalysisResult = {
-      id: `analysis_${Date.now()}`,
-      timestamp: new Date(),
-      filename: selectedFile?.name || 'unknown.mp4',
-      spermCount: Math.floor(Math.random() * 50) + 20,
-      speedAvg: Math.floor(Math.random() * 30) + 15,
-      movementPattern: {
-        progressif: Math.floor(Math.random() * 40) + 30,
-        'non-progressif': Math.floor(Math.random() * 30) + 20,
-        immobile: Math.floor(Math.random() * 20) + 10
-      },
-      concentration: Math.floor(Math.random() * 80) + 20,
-      motility: Math.floor(Math.random() * 40) + 40,
-      totalMotileCount: Math.floor(Math.random() * 100) + 50,
-      morphology: {
-        normal: Math.floor(Math.random() * 30) + 60,
-        abnormal: Math.floor(Math.random() * 40) + 10
-      },
-      processingTime: 12
-    };
-
-    return result;
-  };
-
   const handleAnalyze = async () => {
     if (!selectedFile) return;
 
     setIsAnalyzing(true);
+    setProgress({ stage: 'uploading', progress: 0, message: 'جاري رفع الفيديو...' });
+
     try {
-      const result = await simulateAnalysis();
+      // Upload video
+      setProgress({ stage: 'uploading', progress: 30, message: 'جاري رفع الفيديو...' });
+      const { publicUrl } = await uploadVideo(selectedFile);
+      
+      // Process video
+      setProgress({ stage: 'processing', progress: 50, message: 'معالجة الفيديو...' });
+      
+      // Analyze video
+      setProgress({ stage: 'analyzing', progress: 80, message: 'تحليل الحيوانات المنوية...' });
+      const result = await analyzeVideo(publicUrl);
+      
+      // Complete
+      setProgress({ stage: 'complete', progress: 100, message: 'اكتمل التحليل!' });
+      
+      // Add filename if not present
+      if (!result.filename) {
+        result.filename = selectedFile.name;
+      }
+      
       onAnalysisComplete(result);
       toast.success('تم التحليل بنجاح!');
     } catch (error) {
@@ -128,7 +109,6 @@ export function UploadPage({ onAnalysisComplete }: UploadPageProps) {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
-      {/* Header */}
       <div className="text-center space-y-4">
         <div className="flex justify-center">
           <div className="p-4 bg-blue-100 rounded-full">
@@ -145,19 +125,13 @@ export function UploadPage({ onAnalysisComplete }: UploadPageProps) {
         </div>
       </div>
 
-      {/* Upload Section */}
       {!isAnalyzing && (
         <Card className="border-2 border-dashed border-gray-300 hover:border-blue-400 transition-colors">
           <CardContent className="p-8">
             <div
               className={`
                 relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200
-                ${dragActive 
-                  ? 'border-blue-500 bg-blue-50' 
-                  : selectedFile 
-                    ? 'border-green-500 bg-green-50' 
-                    : 'border-gray-300 hover:border-gray-400'
-                }
+                ${dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
               `}
               onDragEnter={handleDrag}
               onDragLeave={handleDrag}
@@ -173,56 +147,42 @@ export function UploadPage({ onAnalysisComplete }: UploadPageProps) {
               />
 
               <div className="space-y-4">
-                {selectedFile ? (
-                  <div className="space-y-4">
-                    <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
-                    <div>
-                      <h3 className="text-lg font-semibold text-green-700">
-                        تم اختيار الملف بنجاح
-                      </h3>
-                      <p className="text-gray-600 mt-2">
-                        <strong>اسم الملف:</strong> {selectedFile.name}
-                      </p>
-                      <p className="text-gray-600">
-                        <strong>الحجم:</strong> {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                      </p>
-                    </div>
-                    <div className="flex justify-center space-x-4 rtl:space-x-reverse">
-                      <Button onClick={handleAnalyze} size="lg" className="px-8">
-                        <FileVideo className="h-5 w-5 ml-2" />
-                        بدء التحليل
-                      </Button>
-                      <Button onClick={resetUpload} variant="outline" size="lg">
-                        اختيار ملف آخر
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <Upload className="h-16 w-16 text-gray-400 mx-auto" />
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-700">
-                        {dragActive ? 'إفلات الملف هنا' : 'اختر ملف الفيديو'}
-                      </h3>
-                      <p className="text-gray-500 mt-2">
-                        اسحب وأفلت ملف الفيديو هنا أو انقر للاختيار
-                      </p>
-                    </div>
-                    <div className="flex justify-center">
-                      <Button variant="outline" size="lg">
-                        <Upload className="h-5 w-5 ml-2" />
-                        اختيار ملف
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                <Upload className="h-16 w-16 text-gray-400 mx-auto" />
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-700">
+                    {dragActive ? 'إفلات الملف هنا' : 'اختر ملف الفيديو'}
+                  </h3>
+                  <p className="text-gray-500 mt-2">
+                    اسحب وأفلت ملف الفيديو هنا أو انقر للاختيار
+                  </p>
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Analysis Progress */}
+      {selectedFile && !isAnalyzing && (
+        <div className="text-center space-y-4">
+          <div className="flex justify-center items-center space-x-4 rtl:space-x-reverse">
+            <CheckCircle2 className="h-8 w-8 text-green-500" />
+            <div>
+              <p className="font-semibold">{selectedFile.name}</p>
+              <p className="text-sm text-gray-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+            </div>
+          </div>
+          <div className="flex justify-center space-x-4 rtl:space-x-reverse">
+            <Button onClick={handleAnalyze} size="lg" className="px-8">
+              <FileVideo className="h-5 w-5 ml-2" />
+              بدء التحليل
+            </Button>
+            <Button onClick={resetUpload} variant="outline" size="lg">
+              اختيار ملف آخر
+            </Button>
+          </div>
+        </div>
+      )}
+
       {isAnalyzing && progress && (
         <Card>
           <CardHeader>
@@ -242,33 +202,10 @@ export function UploadPage({ onAnalysisComplete }: UploadPageProps) {
               </div>
               <Progress value={progress.progress} className="h-3" />
             </div>
-            
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <h4 className="font-semibold text-blue-900 mb-2">مراحل التحليل:</h4>
-              <div className="space-y-2 text-sm text-blue-800">
-                <div className={`flex items-center space-x-2 rtl:space-x-reverse ${progress.stage === 'uploading' ? 'font-bold' : ''}`}>
-                  <div className={`h-2 w-2 rounded-full ${progress.progress >= 20 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                  <span>رفع الفيديو</span>
-                </div>
-                <div className={`flex items-center space-x-2 rtl:space-x-reverse ${progress.stage === 'processing' ? 'font-bold' : ''}`}>
-                  <div className={`h-2 w-2 rounded-full ${progress.progress >= 40 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                  <span>معالجة الفيديو</span>
-                </div>
-                <div className={`flex items-center space-x-2 rtl:space-x-reverse ${progress.stage === 'analyzing' ? 'font-bold' : ''}`}>
-                  <div className={`h-2 w-2 rounded-full ${progress.progress >= 80 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                  <span>تحليل الحيوانات المنوية</span>
-                </div>
-                <div className={`flex items-center space-x-2 rtl:space-x-reverse ${progress.stage === 'complete' ? 'font-bold' : ''}`}>
-                  <div className={`h-2 w-2 rounded-full ${progress.progress >= 100 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                  <span>إنهاء التحليل</span>
-                </div>
-              </div>
-            </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Instructions */}
       {!isAnalyzing && !selectedFile && (
         <div className="grid md:grid-cols-2 gap-6">
           <Card>
